@@ -1,0 +1,377 @@
+<style>
+    body {
+        overflow: hidden;
+    }
+    #chin {
+        position: absolute;
+        bottom: -1;
+        left: -1;
+        width: 600px;
+        height: 400px;
+        background-color: rgb(26, 26, 26);
+        border: 1px solid white;
+    }
+    #restart {
+        position: absolute;
+        width: 200px;
+        height: 50px;
+        right: 100px;
+        bottom: 50px;
+    }
+    #key {
+        position: absolute;
+        top : 0;
+        left : 0;
+        padding : 20px;
+    }
+    #interp {
+        color: cyan;
+    }
+    #truth {
+        color : greenyellow
+    }
+    .setting {
+        margin: 10px;
+        padding: 10px;
+        height: 35px;
+        display: block;
+        width: 300px;
+        position: relative;
+    }
+    input {
+        display: inline-block;
+    }
+
+    .setting > input {
+        position: absolute;
+        top: 40px;
+        width: 200px;
+    }
+    .setting > output {
+        width: 100%;
+        display: block;
+        position: absolute;
+        top: 40px;
+        left: 250px;
+        font-size: 20px;
+    }
+
+    #options {
+        position: relative;
+    }
+
+    #frame {
+        position: absolute;
+        top: 0;
+        left: -4;
+        height: 100%;
+        width: 1px;
+        background-color: white;
+    }
+
+    body {
+        overflow: hidden;
+        background-color: rgb(45, 45, 45);
+        color: white;
+    }
+
+
+</style>
+
+<script>
+    function changeLatency () {
+        var latency = document.getElementById("latencySlider").value;
+        var latency_output = document.getElementById("latency");
+        latency_output.innerHTML = 'Delayed ' + latency + " frames";
+        document._latency = latency;
+    }
+    function changeRender () {
+        var render = document.getElementById("renderSlider").value;
+        document._render = 41 - render;
+    }
+    function changeSyncRate () {
+        var sync = document.getElementById("syncSlider").value;
+        var sync_output = document.getElementById("sync");
+        sync_output.innerHTML = "Sync Every " + sync + " frames";
+        document._sync = sync;
+    }
+    function changeMethod() {
+        var method = document.getElementById("method").value;
+        document._method = method;
+    }
+    function changeSmooth() {
+        var key = document.getElementById("smooth").value;
+        document._smooth = key;
+    }
+    setTimeout(() => {
+        changeLatency()
+        changeRender()  
+        changeSyncRate()
+        changeMethod()
+        changeSmooth()
+    }, 200)
+
+</script>
+
+<body></body>
+<div id="frame"></div>
+<div id="key">
+    <div id="interp">Rendered on Client</div>
+    <br/>
+    <div id="truth">Known Truth</div>
+    <br/>
+    <div id="FrameDISP"></div>
+</div>
+<div id="chin">
+    <div id="options">
+        <div class="setting">
+            <div> Network Latency</div>
+            <input type="range" min="1" max="200" value="50" id="latencySlider" oninput="changeLatency()">
+            <output id="latency">Delayed 50</output>
+        </div>  
+        <div class="setting">
+            <div>Sync Frequency</div>
+            <input type="range" min="1" max="200" value="50" id="syncSlider" oninput="changeSyncRate()">
+            <output id="sync">Every 50</output>
+        </div>    
+        <div class="setting">
+            <div> Simulation Speed</div>
+            <input type="range" min="2" max="40" value="20" id="renderSlider" oninput="changeRender()">
+        </div>    
+        <div class="setting">
+            <div>Interpolation Method</div>
+            <select oninput="changeMethod()" id="method">            
+                <option value="None">None</option>
+                <option value="Linear">Linear</option>
+                <option value="Quadratic">Quadratic</option>
+            </select>
+        </div>  
+        <div class="setting">
+            <div>Smooth Method</div>
+            <select oninput="changeSmooth()" id="smooth">            
+                <option value="None">None</option>
+                <option value="Slow Average">Slow Average</option>
+                <option value="Fast Average">Fast Average</option>
+                <option value="Rectify">Rectify</option>
+            </select>
+        </div>  
+    </div>
+    <button id="restart" onclick="start()">Start Visualization</button>
+</div>
+
+<script>
+
+    // Helpers
+
+    function placePoint ( x, y, color ) {
+        var div = document.createElement("div");
+        div.style.position = "absolute";
+        div.style.left = x + "px";
+        div.style.top = (y+200) + "px";
+        div.style.width = "5px";
+        div.style.height = "5px";
+        div.style.borderRadius = "50%";
+        div.style.backgroundColor = color;
+        div.style.zIndex = color == 'cyan' ?  "1" : "0";
+        div.className = "point";
+        document.body.appendChild(div);
+
+        if ( color == 'cyan' ) {
+            document.getElementById("frame").style.left = x + "px";
+            document.getElementById("frame").style.background = "white";
+            document.getElementById("FrameDISP").innerHTML = "Frame: " + x;
+        }
+    }
+
+    function deterministicMovement ( state ) {
+        const [a,b,c] = state
+        return [
+            a + b,
+            b + c,
+            (c - (a / 1000000)) * 0.98
+        ]
+    }
+
+
+    class Simulate {
+
+        constructor ( data ) {
+
+            this.syncFrequency = data.syncFrequency
+            this.latency = data.latency
+            this.clientCallback = data.callback
+            this.smoothCallback = data.smoothCallback
+            this.tick = 0
+            this.serverStates = [[0,0,0,0]]
+            this.clientStates = []
+            this.lastTarget = 0
+            this.clientRenders = []
+            this.smoothCache = {}
+            this.off_by = 0
+
+            const go = this.do_step.bind(this)
+            const start = () => this.interval = setInterval( _ => this.do_step(), document._render)
+            setTimeout( start.bind(this), 200)
+
+        }
+
+        do_step () {
+
+            this.tick += 1
+
+            const syncData = {
+                tick : this.tick,
+                lastPrediction : this.clientStates[this.clientStates.length - 1],
+                latency: this.latency,
+            }
+
+            const synced = this.tick % this.syncFrequency == 0 
+
+            if ( synced ) {
+
+                const targetState = this.tick - this.latency
+                const targetData = this.serverStates[targetState]
+                syncData.state = targetData
+
+                for ( let i = 0 ; i < this.syncFrequency; i ++ ) {
+                    const position = this.tick - this.latency - i
+                    if (position > 0){
+                        placePoint(position, this.serverStates[position][0], 'lime')
+                        this.off_by = (this.serverStates[position][0] - this.clientRenders[position]) * 0.1 + this.off_by * 0.9
+                    }
+                }
+
+            }
+
+            const { value, cache } = this.clientCallback(syncData)
+            const { value: smoothValue, cache: smoothCache } = this.smoothCallback(this.lastTarget, value, synced, this.smoothCache )
+            this.lastTarget = value 
+            this.clientStates.push(cache)
+            this.smoothCache = smoothCache
+            placePoint(this.tick, smoothValue, 'cyan')
+            this.clientRenders.push(smoothValue)
+
+            // Update state
+            const last = [... this.serverStates[this.serverStates.length-1]]
+            const new_state = deterministicMovement(last)
+            new_state[2] += Math.random() * 0.0001
+            this.serverStates.push(new_state)
+        }
+
+        end () {
+            clearInterval(this.interval)
+        }
+    }
+
+    
+    // Simple client takes what server did
+    const noInterpolation = (syncData) => {
+        const {tick, state, lastPrediction} = syncData
+        if (state)
+            return { value : state[0], cache : state[0] }
+        if (lastPrediction)
+            return { value : lastPrediction, cache : lastPrediction }
+        else
+            return { value : 0, cache : lastPrediction }
+    }
+
+    const linearInterpolation  = (syncData) => {
+        const {tick, state, lastPrediction, latency} = syncData
+        if (state) {
+            const [a,b,c] = state
+            const guess = b * latency + a
+            return {value : guess, cache : [guess, b] }
+        }
+        if (lastPrediction){
+            const [a,b,c] = lastPrediction
+            return { value : a + b, cache : [a+b,b] }
+        }
+        else {
+            return { value : 0, cache : 0}
+        }
+    }
+
+    const quadraticInterpolation  = (syncData) => {
+        const {tick, state, lastPrediction, latency} = syncData
+        if (state) {
+            let state_pred = [...state]
+            //for ( let i = 0 ; i < latency; i += 1) {
+            //    state_pred = deterministicMovement(state_pred)
+            //}
+            return {value : state_pred[0], cache : state_pred }
+        }
+        if (lastPrediction){
+            let state_pred = deterministicMovement(lastPrediction)
+            return { value : state_pred[0], cache : state_pred }
+        }
+        else {
+            return { value : 0, cache : 0}
+        }
+    }
+
+    function none_smoothing ( value_1, value_2, did_sync, cache ) {
+        return { value : value_2, cache : 0 }
+    }
+
+    function average_high_smoothing (value_1, value_2, did_sync, cache ) {
+        if (value_1 && value_2 && cache ){
+            const value = value_2 * 0.1 + cache * 0.9
+            return { value, cache : value }
+            
+        }
+        else 
+            return { value : value_2 || value_1, cache : value_2 || value_1  }
+    }
+
+
+    function average_low_smoothing (value_1, value_2, did_sync, cache ) {
+        if (value_1 && value_2 && cache ){
+            const value = value_2 * 0.01 + cache * 0.99
+            return { value, cache : value }
+            
+        }
+        else 
+            return { value : value_2 || value_1, cache : value_2 || value_1  }
+    }
+
+
+    function rectify_smoothing (previous, advocated, did_sync, cache) {
+
+        if (did_sync) {
+            const delta = previous - advocated
+            return { value : advocated + delta, cache : delta}
+        }
+        else {
+            if ( !cache ) cache = 0
+            let offset = cache * 0.99
+            return { value : advocated + offset, cache : offset }
+        }
+    }
+
+    function start () {
+        [...document.getElementsByClassName("point")].forEach( e => e.remove() )
+        if (document._running) {
+            document._running.end()
+            delete document._running
+        }
+
+        const data = {
+            syncFrequency : document._sync,
+            latency : document._latency,
+            callback : ({
+                'None' : noInterpolation,
+                'Linear' : linearInterpolation,
+                'Quadratic' : quadraticInterpolation
+            }[document._method]),
+            smoothCallback : ({
+                'None' : none_smoothing,
+                'Slow Average' : average_low_smoothing,
+                'Fast Average' : average_high_smoothing,
+                'Rectify' : rectify_smoothing
+            }[document._smooth])
+        }
+        document._running = new Simulate(data)
+    }
+
+
+</script>

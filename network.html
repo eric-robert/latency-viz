@@ -1,0 +1,125 @@
+<style>
+    .container {
+        display: flex;
+        flex-direction: row;
+        margin: 40px;
+        width: 700px;
+        position: relative;
+    }
+    .box {
+        flex : 1;
+        height: 50px;
+        border-radius: 10px;
+        margin: 10px;
+        padding: 10px;
+        text-align: center;
+        line-height: 50px;  
+        font-weight: 400;
+        font-size: 20pt;
+        background-color: rgb(36, 36, 36);
+        z-index: 2;
+    }
+    .server {
+        border: 2px solid rgb(191, 108, 0);
+    }
+    .gap {
+        flex : 1
+    }
+    .client {
+        border: 2px solid rgb(0, 191, 185);
+    }
+    .line-1 {
+        position: absolute;
+        top : 45px;
+        left: 147px;
+        width: 140px;
+        height: 0;
+        border: 0.5px dashed rgb(0, 191, 185);
+    }
+    .line-2 {
+        position: absolute;
+        top : 45px;
+        left: 417px;
+        width: 140px;
+        height: 0;
+        border: 0.5px dashed rgb(0, 191, 185);
+    }
+    .message {
+        position: absolute;
+        top : -8px;
+        left: 0;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        transition: all 2s ease-in-out;
+    }
+</style>
+
+<script>
+
+    function run () {
+        
+        let coin_flip = () => Math.floor(Math.random() * 2) == 0
+        let line_class = coin_flip() ? 'line-1' : 'line-2'
+        let origin = coin_flip() ? 'server' : 'client'
+        
+        let message = document.createElement('div')
+        message.className = 'message'
+
+        if (origin == 'server') {
+            message.style.backgroundColor = 'rgb(191, 108, 0)'
+            if (line_class == 'line-1') {
+                message.style.left = '147px'
+            }
+            else {
+                message.style.left = '-20px'
+            }
+        }
+
+        else {
+            message.style.backgroundColor = 'rgb(0, 191, 185)'
+            if (line_class == 'line-1') {
+                message.style.left = '-20px'
+            }
+            else {
+                message.style.left = '147px'
+            }
+        }
+
+        document.getElementsByClassName(line_class).item(0).appendChild(message)
+        setTimeout(() => {
+            if ( message.style.left == '-20px' ) {
+                message.style.left = '167px'
+            }
+            else {
+                message.style.left = '-20px'
+            }
+        }, 20)
+
+        setTimeout(() => {
+            message.parentNode.removeChild(message)
+        }, 2200)
+
+        setTimeout(run, Math.floor(Math.random() * 3000));
+    }
+
+    setTimeout( run, 100)
+
+</script>
+
+<body>
+
+    <div class="container">
+
+        <div class="line-1"></div>
+        <div class="line-2"></div>
+
+        <div class="client box"> Client 1 </div>
+        <div class="gap"></div>
+        <div class="server box"> Server </div>
+        <div class="gap"></div>
+        <div class="client box"> Client 2 </div>
+    </div>
+
+
+</body>
